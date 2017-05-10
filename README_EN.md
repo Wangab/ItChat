@@ -8,6 +8,8 @@ Accessing your personal wechat account through itchat in python has never been e
 
 A wechat robot can handle all the basic messages with only less than 30 lines of codes.
 
+And it's similiar to itchatmp (api for wechat massive platform), learn once and get two tools.
+
 Now Wechat is an important part of personal life, hopefully this repo can help you extend your personal wechat account's functionality and enbetter user's experience with wechat.
 
 ## Installation
@@ -20,14 +22,24 @@ pip install itchat
 
 ## Simple uses
 
-With itchat, you only need to write this to reply personal text messages.
+With itchat, if you want to send a message to filehelper, this is how:
+
+```python
+import itchat
+
+itchat.auto_login()
+
+itchat.send('Hello, filehelper', toUserName='filehelper')
+```
+
+And you only need to write this to reply personal text messages.
 
 ```python
 import itchat
 
 @itchat.msg_register(itchat.content.TEXT)
 def text_reply(msg):
-    itchat.send(msg['Text'], msg['FromUserName'])
+    return msg.text
 
 itchat.auto_login()
 itchat.run()
@@ -47,36 +59,61 @@ This QRCode is a wechat account based on the framework of [demo code][robot-sour
 
 ## Advanced uses
 
+### Special usage of message dictionary
+
+You may find out that all the users and messages of itchat are dictionaries by printing them out onto the screen.
+
+But actually they are useful classes itchat created.
+
+They have useful keys and useful interfaces, like:
+
+```python
+@itchat.msg_register(TEXT)
+def _(msg):
+    # equals to print(msg['FromUserName'])
+    print(msg.fromUserName)
+```
+
+And like:
+
+```python
+author = itchat.search_friends(nickName='LittleCoder')[0]
+author.send('greeting, littlecoder!')
+```
+
 ### Message register of various types
 
 The following is a demo of how itchat is configured to fetch and reply daily information.
 
 ```python
-#coding=utf8
 import itchat, time
 from itchat.content import *
 
 @itchat.msg_register([TEXT, MAP, CARD, NOTE, SHARING])
 def text_reply(msg):
-    itchat.send('%s: %s' % (msg['Type'], msg['Text']), msg['FromUserName'])
+    msg.user.send('%s: %s' % (msg.type, msg.text))
 
 @itchat.msg_register([PICTURE, RECORDING, ATTACHMENT, VIDEO])
 def download_files(msg):
-    msg['Text'](msg['FileName'])
-    return '@%s@%s' % ({'Picture': 'img', 'Video': 'vid'}.get(msg['Type'], 'fil'), msg['FileName'])
+    msg.download(msg.fileName)
+    typeSymbol = {
+        PICTURE: 'img',
+        VIDEO: 'vid', }.get(msg.type, 'fil')
+    return '@%s@%s' % (typeSymbol, msg.fileName)
 
 @itchat.msg_register(FRIENDS)
 def add_friend(msg):
-    itchat.add_friend(**msg['Text']) # 该操作会自动将新好友的消息录入，不需要重载通讯录
-    itchat.send_msg('Nice to meet you!', msg['RecommendInfo']['UserName'])
+    msg.user.verify()
+    msg.user.send('Nice to meet you!')
 
 @itchat.msg_register(TEXT, isGroupChat=True)
 def text_reply(msg):
-    if msg['isAt']:
-        itchat.send(u'@%s\u2005I received: %s' % (msg['ActualNickName'], msg['Content']), msg['FromUserName'])
+    if msg.isAt:
+        msg.user.send(u'@%s\u2005I received: %s' % (
+            msg.actualNickName, msg.text))
 
 itchat.auto_login(True)
-itchat.run()
+itchat.run(True)
 ```
 
 ### Command line QR Code
@@ -142,21 +179,63 @@ Name of the file (default name of picture) is in FileName key of msg
 Download function accept one location value (include the file name) and store attachment accordingly.
 
 ```python
-@itchat.msg_register(['Picture', 'Recording', 'Attachment', 'Video'])
+@itchat.msg_register([PICTURE, RECORDING, ATTACHMENT, VIDEO])
 def download_files(msg):
-    msg['Text'](msg['FileName'])
-    itchat.send('@%s@%s'%('img' if msg['Type'] == 'Picture' else 'fil', msg['FileName']), msg['FromUserName'])
-    return '%s received'%msg['Type']
+    msg.download(msg.fileName)
+    itchat.send('@%s@%s' % (
+        'img' if msg['Type'] == 'Picture' else 'fil', msg['FileName']),
+        msg['FromUserName'])
+    return '%s received' % msg['Type']
 ```
 
 If you don't want a local copy of the picture, you may pass nothing to the function to get a binary string.
 
 ```python
-@itchat.msg_register(['Picture', 'Recording', 'Attachment', 'Video'])
+@itchat.msg_register([PICTURE, RECORDING, ATTACHMENT, VIDEO])
 def download_files(msg):
-    with open(msg['FileName'], 'wb') as f:
-        f.write(msg['Text']())
+    with open(msg.fileName, 'wb') as f:
+        f.write(msg.download())
 ```
+
+### Multi instance
+
+You may use the following commands to open multi instance.
+
+```python
+import itchat
+
+newInstance = itchat.new_instance()
+newInstance.auto_login(hotReload=True, statusStorageDir='newInstance.pkl')
+
+@newInstance.msg_register(itchat.content.TEXT)
+def reply(msg):
+    return msg['Text']
+
+newInstance.run()
+```
+
+### Set callback after login and logout
+
+Callback of login and logout are set through `loginCallback` and `exitCallback`.
+
+```python
+import time
+
+import itchat
+
+def lc():
+    print('finish login')
+def ec():
+    print('exit')
+
+itchat.auto_login(loginCallback=lc, exitCallback=ec)
+time.sleep(3)
+itchat.logout()
+```
+
+If loginCallback is not set, qr picture will be deleted and cmd will be cleared.
+
+If you exit through phone, exitCallback will also be called.
 
 ## FAQ
 
@@ -164,17 +243,19 @@ Q: Why I can't upload files whose name is not purely english?
 
 A: This is caused because of the encoding of `requests`, you may fix it by placing [fields.py][fields.py-2](py3 version is [here][fields.py-3]) in packages/urllib3 of requests.
 
-Q: Why I still can't show QRCode with command line after I set enableCmdQr key to True in itchat.auto_login()?
-
-A: That's because you need to install optional site-package pillow, try this script: pip install pillow
-
 Q: How to use this package to use my wechat as an monitor?
 
 A: There are two ways: communicate with your own account or with filehelper.
 
+Q: Why sometimes I can't send messages?
+
+A: Some account simply can't send messages to yourself, so use `filehelper` instead.
+
 ## Author
 
 [LittleCoder][littlecodersh]: Structure and py2 py3 version
+
+[tempdban][tempdban]: Structure and daily maintainance
 
 [Chyroc][Chyroc]: first py3 version
 
@@ -182,7 +263,11 @@ A: There are two ways: communicate with your own account or with filehelper.
 
 [liuwons/wxBot][liuwons-wxBot]: A wechat robot similiar to the robot branch
 
-[zixia/wechaty][zixia-wechaty]: wechat for bot in Javascript(ES6), Personal Account Robot Framework/Library.
+[zixia/wechaty][zixia-wechaty]: Wechat for bot in Javascript(ES6), Personal Account Robot Framework/Library
+
+[sjdy521/Mojo-Weixin][Mojo-Weixin]: Wechat web api in Perl, available with HTTP requests
+
+[yaphone/itchat4j][yaphone-itchat4j]: Extend your wechat with java
 
 ## Comments
 
@@ -203,7 +288,10 @@ Or you may also use [![Gitter][gitter-picture]][gitter]
 [fields.py-2]: https://gist.github.com/littlecodersh/9a0c5466f442d67d910f877744011705
 [fields.py-3]: https://gist.github.com/littlecodersh/e93532d5e7ddf0ec56c336499165c4dc
 [littlecodersh]: https://github.com/littlecodersh
+[tempdban]: https://github.com/tempdban
 [Chyroc]: https://github.com/Chyroc
 [liuwons-wxBot]: https://github.com/liuwons/wxBot
 [zixia-wechaty]: https://github.com/zixia/wechaty
+[Mojo-Weixin]: https://github.com/sjdy521/Mojo-Weixin
+[yaphone-itchat4j]: https://github.com/yaphone/itchat4j
 [issue#1]: https://github.com/littlecodersh/ItChat/issues/1
