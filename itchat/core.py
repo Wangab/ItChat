@@ -1,8 +1,6 @@
-import logging
-
 import requests
 
-from . import config, storage, utils, log
+from . import storage
 from .components import load_components
 
 class Core(object):
@@ -127,7 +125,7 @@ class Core(object):
     def get_msg(self):
         ''' fetch messages
             for fetching
-                - method blocks for sometime util
+                - method blocks for sometime until
                     - new messages are to be received
                     - or anytime they like
                 - synckey is updated with returned synccheckkey
@@ -366,6 +364,15 @@ class Core(object):
                     - if none of them matches, it will be sent like plain text
                 - toUserName: 'UserName' key of friend dict
                 - mediaId: if set, uploading will not be repeated
+            it is defined in components/messages.py
+        '''
+        raise NotImplementedError()
+    def revoke(self, msgId, toUserName, localId=None):
+        ''' revoke message with its and msgId
+            for options
+                - msgId: message Id on server
+                - toUserName: 'UserName' key of friend dict
+                - localId: message Id at local (optional)
             it is defined in components/messages.py
         '''
         raise NotImplementedError()
